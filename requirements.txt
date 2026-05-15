@@ -1,0 +1,9 @@
+streamlit
+pandas
+openpyxl
+plotly
+gspread
+oauth2client
+reportlab
+qrcode
+pillow

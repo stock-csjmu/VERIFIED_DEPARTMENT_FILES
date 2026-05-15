@@ -1,0 +1,7 @@
+GOOGLE_SHEET_ID = 'PASTE_GOOGLE_SHEET_ID'
+GOOGLE_GID = 'PASTE_GID'
+
+INPUT_FOLDER = 'input_excels'
+OUTPUT_FOLDER = 'processed_excels'
+QR_FOLDER = 'qr_codes'
+REPORT_FOLDER = 'reports'
