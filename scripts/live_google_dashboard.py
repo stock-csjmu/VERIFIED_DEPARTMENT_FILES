@@ -1,275 +1,227 @@
 import streamlit as st
 import pandas as pd
 import gspread
-
 from oauth2client.service_account import ServiceAccountCredentials
 
-from generate_department_report import generate_pdf_report
+# =========================================
+# PAGE CONFIGURATION
+# =========================================
 
-# =====================================================
-# GOOGLE AUTH
-# =====================================================
+st.set_page_config(
+    page_title="CSJMU Live Inventory Dashboard",
+    layout="wide"
+)
+
+st.title("CSJMU Live Inventory Verification Dashboard")
+
+# =========================================
+# GOOGLE API AUTHENTICATION
+# =========================================
 
 scope = [
-    'https://spreadsheets.google.com/feeds',
-    'https://www.googleapis.com/auth/drive'
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/drive"
 ]
 
-credentials = ServiceAccountCredentials.from_json_keyfile_name(
-    'config/credentials.json',
+credentials_dict = dict(st.secrets["gcp_service_account"])
+
+credentials = ServiceAccountCredentials.from_json_keyfile_dict(
+    credentials_dict,
     scope
 )
 
 client = gspread.authorize(credentials)
 
-# =====================================================
-# PAGE SETTINGS
-# =====================================================
+# =========================================
+# LOAD DEPARTMENT CONFIGURATION
+# =========================================
 
-st.set_page_config(
-    page_title='CSJMU Live Inventory Dashboard',
-    layout='wide'
+departments_df = pd.read_csv("departments.csv")
+
+department_sheets = dict(
+    zip(
+        departments_df["Department"],
+        departments_df["SheetID"]
+    )
 )
 
-st.title('CSJMU Live Inventory Verification Dashboard')
+# =========================================
+# LOAD GOOGLE SHEET DATA
+# =========================================
 
-# =====================================================
-# GOOGLE SHEETS CONFIG
-# =====================================================
+@st.cache_data(ttl=60)
+def load_department_data(sheet_id):
 
-DEPARTMENTS = {
+    spreadsheet = client.open_by_key(sheet_id)
 
-    'UIBM': 'UIBM',
-    'ATAL': 'ATAL'
+    worksheet = spreadsheet.sheet1
 
-}
+    data = worksheet.get_all_records()
 
-# =====================================================
-# SUMMARY
-# =====================================================
+    df = pd.DataFrame(data)
+
+    return df
+
+# =========================================
+# SUMMARY SECTION
+# =========================================
 
 summary_data = []
 
-department_data = {}
+department_dataframes = {}
 
-for dept, sheet_name in DEPARTMENTS.items():
+for department_name, sheet_id in department_sheets.items():
 
     try:
 
-        # ==============================================
-        # READ GOOGLE SHEET
-        # ==============================================
+        df = load_department_data(sheet_id)
 
-        sheet = client.open(sheet_name).get_worksheet(0)
+        department_dataframes[department_name] = df
 
-        data = sheet.get_all_records()
+        df["Total Quantity"] = pd.to_numeric(
+            df["Total Quantity"],
+            errors="coerce"
+        ).fillna(0)
 
-        df = pd.DataFrame(data)
+        df["Verified Available Quantity"] = pd.to_numeric(
+            df["Verified Available Quantity"],
+            errors="coerce"
+        ).fillna(0)
 
-        department_data[dept] = df
-
-        # ==============================================
-        # SAFE COLUMNS
-        # ==============================================
-
-        required_columns = [
-
-            'Total Quantity',
-            'Available Quantity',
-            'Verified Available Quantity',
-            'Missing Quantity',
-            'Verification Status',
-            'Condition'
-
-        ]
-
-        for col in required_columns:
-
-            if col not in df.columns:
-
-                df[col] = 0
-
-        # ==============================================
-        # CALCULATIONS
-        # ==============================================
+        df["Calculated Missing Quantity"] = (
+            df["Total Quantity"] -
+            df["Verified Available Quantity"]
+        )
 
         total_items = len(df)
 
-        total_quantity = pd.to_numeric(
-            df['Total Quantity'],
-            errors='coerce'
-        ).fillna(0).sum()
+        total_quantity = df["Total Quantity"].sum()
 
-        available_quantity = pd.to_numeric(
-            df['Available Quantity'],
-            errors='coerce'
-        ).fillna(0).sum()
+        verified_quantity = df["Verified Available Quantity"].sum()
 
-        verified_quantity = pd.to_numeric(
-            df['Verified Available Quantity'],
-            errors='coerce'
-        ).fillna(0).sum()
-
-        missing_quantity = pd.to_numeric(
-            df['Missing Quantity'],
-            errors='coerce'
-        ).fillna(0).sum()
+        missing_quantity = (
+            total_quantity - verified_quantity
+        )
 
         pending_items = len(
-            df[
-                df['Verification Status']
-                .astype(str)
-                .str.upper()
-                .isin(['', 'PENDING', 'NONE'])
-            ]
+            df[df["Verified Available Quantity"] == 0]
         )
 
         damaged_assets = len(
             df[
-                df['Condition']
+                df["Condition"]
                 .astype(str)
                 .str.upper()
-                == 'DAMAGED'
+                == "DAMAGED"
             ]
         )
 
-        # ==============================================
-        # SUMMARY APPEND
-        # ==============================================
+        summary = {
+            "Department": department_name,
+            "Total Items": int(total_items),
+            "Total Quantity": int(total_quantity),
+            "Available Quantity": int(total_quantity),
+            "Verified Quantity": int(verified_quantity),
+            "Missing Quantity": int(missing_quantity),
+            "Pending Items": int(pending_items),
+            "Damaged Assets": int(damaged_assets)
+        }
 
-        summary_data.append({
-
-            'Department': dept,
-
-            'Total Items': total_items,
-
-            'Total Quantity': total_quantity,
-
-            'Available Quantity': available_quantity,
-
-            'Verified Quantity': verified_quantity,
-
-            'Missing Quantity': missing_quantity,
-
-            'Pending Items': pending_items,
-
-            'Damaged Assets': damaged_assets
-
-        })
+        summary_data.append(summary)
 
     except Exception as e:
 
-        st.error(f'Error reading {dept}: {e}')
+        st.error(f"Error reading {department_name}: {e}")
 
-# =====================================================
-# SHOW SUMMARY
-# =====================================================
+# =========================================
+# DISPLAY SUMMARY
+# =========================================
+
+st.subheader("Department-wise Summary")
 
 summary_df = pd.DataFrame(summary_data)
-
-st.subheader('Department-wise Summary')
 
 st.dataframe(
     summary_df,
     use_container_width=True
 )
 
-# =====================================================
-# DETAILED VIEW
-# =====================================================
+# =========================================
+# SELECT DEPARTMENT
+# =========================================
 
-st.markdown('---')
+st.divider()
 
 selected_department = st.selectbox(
-    'Select Department',
-    list(DEPARTMENTS.keys())
+    "Select Department",
+    list(department_sheets.keys())
 )
 
-# =====================================================
-# SHOW DETAILS
-# =====================================================
+# =========================================
+# DETAIL TABLE
+# =========================================
 
-if selected_department:
+st.subheader(
+    f"Detailed Inventory Information - {selected_department}"
+)
 
-    df = department_data[selected_department]
+detail_df = department_dataframes[selected_department]
 
-    st.subheader(
-        f'Detailed Inventory Information - {selected_department}'
-    )
+detail_df["Total Quantity"] = pd.to_numeric(
+    detail_df["Total Quantity"],
+    errors="coerce"
+).fillna(0)
 
-    columns_to_show = [
+detail_df["Verified Available Quantity"] = pd.to_numeric(
+    detail_df["Verified Available Quantity"],
+    errors="coerce"
+).fillna(0)
 
-        'Reference No.',
-        'Name of the Item',
-        'Inventory Category',
-        'Inventory Sub Category',
-        'Total Quantity',
-        'Available Quantity',
-        'Building',
-        'Floor',
-        'Room No',
-        'Cabin/Lab/Classroom',
-        'Exact Physical Location',
-        'Custodian/User',
-        'Department Verification Committee',
-        'Verified Available Quantity',
-        'Missing Quantity',
-        'Verification Status',
-        'Condition',
-        'QR Sticker Pasted',
-        'Verified By',
-        'Verification Date',
-        'Remarks'
+detail_df["Calculated Missing Quantity"] = (
+    detail_df["Total Quantity"] -
+    detail_df["Verified Available Quantity"]
+)
 
-    ]
+display_columns = [
+    "Reference No.",
+    "Name of the Item",
+    "Inventory Category",
+    "Inventory Sub Category",
+    "Total Quantity",
+    "Available Quantity",
+    "Building",
+    "Floor",
+    "Room No",
+    "Cabin/Lab/Classroom",
+    "Exact Physical Location",
+    "Custodian/User",
+    "Department Verification Committee",
+    "Verified Available Quantity",
+    "Calculated Missing Quantity",
+    "Verification Status",
+    "Condition",
+    "QR Sticker Pasted",
+    "Verified By",
+    "Verification Date",
+    "Remarks"
+]
 
-    available_columns = [
+available_columns = [
+    col for col in display_columns
+    if col in detail_df.columns
+]
 
-        col for col in columns_to_show
+st.dataframe(
+    detail_df[available_columns],
+    use_container_width=True
+)
 
-        if col in df.columns
-
-    ]
-
-    st.dataframe(
-        df[available_columns],
-        use_container_width=True,
-        height=650
-    )
-
-    # =================================================
-    # GENERATE PDF REPORT BUTTON
-    # =================================================
-
-    st.markdown('---')
-
-    if st.button('Generate Final Department Report'):
-
-        try:
-
-            generate_pdf_report(
-                selected_department,
-                df
-            )
-
-            st.success(
-                f'{selected_department} PDF Report Generated Successfully!'
-            )
-
-            st.info(
-                'Check folder: D:\\VERIFIED_DEPARTMENT_FILES\\final_reports'
-            )
-
-        except Exception as e:
-
-            st.error(f'PDF Generation Error: {e}')
-
-# =====================================================
+# =========================================
 # FOOTER
-# =====================================================
+# =========================================
 
-st.markdown('---')
+st.divider()
 
 st.caption(
-    'CSJMU QR-Based Inventory Verification & Monitoring System'
+    "CSJMU QR-Based Inventory Verification & Monitoring System"
 )
