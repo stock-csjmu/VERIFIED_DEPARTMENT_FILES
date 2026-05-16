@@ -3,7 +3,8 @@ from reportlab.platypus import (
     Paragraph,
     Spacer,
     Table,
-    TableStyle
+    TableStyle,
+    PageBreak
 )
 
 from reportlab.lib import colors
@@ -11,381 +12,271 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import A4
 
 import pandas as pd
-import os
 
 
 def generate_pdf_report(department_name, df):
 
-    # =====================================================
-    # OUTPUT FOLDER
-    # =====================================================
+    # =========================================
+    # FILE NAME
+    # =========================================
 
-    output_folder = r"D:\VERIFIED_DEPARTMENT_FILES\final_reports"
+    file_name = f"{department_name}_Verification_Report.pdf"
 
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-
-    output_file = os.path.join(
-        output_folder,
-        f"{department_name}_Final_Verification_Report.pdf"
-    )
-
-    # =====================================================
+    # =========================================
     # PDF DOCUMENT
-    # =====================================================
+    # =========================================
 
     doc = SimpleDocTemplate(
-        output_file,
+        file_name,
         pagesize=A4,
-        rightMargin=25,
-        leftMargin=25,
-        topMargin=25,
-        bottomMargin=25
+        rightMargin=20,
+        leftMargin=20,
+        topMargin=20,
+        bottomMargin=20
     )
 
     styles = getSampleStyleSheet()
 
     elements = []
 
-    # =====================================================
+    # =========================================
     # TITLE
-    # =====================================================
+    # =========================================
 
     title = Paragraph(
-
         "<b>CHHATRAPATI SHAHU JI MAHARAJ UNIVERSITY</b>",
-
         styles['Title']
     )
 
     subtitle = Paragraph(
-
         f"<b>{department_name} - Inventory Verification Completion Report</b>",
-
         styles['Heading2']
     )
 
     elements.append(title)
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 12))
 
     elements.append(subtitle)
-    elements.append(Spacer(1, 25))
+    elements.append(Spacer(1, 20))
 
-    # =====================================================
-    # SAFE COLUMNS
-    # =====================================================
+    # =========================================
+    # SAFE NUMERIC CONVERSION
+    # =========================================
 
-    numeric_columns = [
+    df["Total Quantity"] = pd.to_numeric(
+        df["Total Quantity"],
+        errors="coerce"
+    ).fillna(0)
 
-        'Total Quantity',
-        'Available Quantity',
-        'Verified Available Quantity',
-        'Missing Quantity'
+    df["Verified Available Quantity"] = pd.to_numeric(
+        df["Verified Available Quantity"],
+        errors="coerce"
+    ).fillna(0)
 
-    ]
-
-    for col in numeric_columns:
-
-        if col not in df.columns:
-
-            df[col] = 0
-
-    # =====================================================
-    # CALCULATIONS
-    # =====================================================
+    # =========================================
+    # SUMMARY CALCULATIONS
+    # =========================================
 
     total_items = len(df)
 
-    total_quantity = pd.to_numeric(
-        df['Total Quantity'],
-        errors='coerce'
-    ).fillna(0).sum()
+    total_quantity = int(df["Total Quantity"].sum())
 
-    available_quantity = pd.to_numeric(
-        df['Available Quantity'],
-        errors='coerce'
-    ).fillna(0).sum()
+    verified_quantity = int(
+        df["Verified Available Quantity"].sum()
+    )
 
-    verified_quantity = pd.to_numeric(
-        df['Verified Available Quantity'],
-        errors='coerce'
-    ).fillna(0).sum()
-
-    missing_quantity = pd.to_numeric(
-        df['Missing Quantity'],
-        errors='coerce'
-    ).fillna(0).sum()
+    missing_quantity = (
+        total_quantity - verified_quantity
+    )
 
     damaged_assets = len(
         df[
-            df['Condition']
+            df["Condition"]
             .astype(str)
             .str.upper()
-            == 'DAMAGED'
+            == "DAMAGED"
         ]
     )
 
     pending_items = len(
         df[
-            df['Verification Status']
-            .astype(str)
-            .str.upper()
-            .isin(['', 'PENDING', 'NONE'])
+            df["Verified Available Quantity"] == 0
         ]
     )
 
-    # =====================================================
+    # =========================================
     # SUMMARY TABLE
-    # =====================================================
+    # =========================================
 
     summary_data = [
-
-        ['Department', department_name],
-
-        ['Total Inventory Items', total_items],
-
-        ['Total Quantity', int(total_quantity)],
-
-        ['Available Quantity', int(available_quantity)],
-
-        ['Verified Quantity', int(verified_quantity)],
-
-        ['Missing Quantity', int(missing_quantity)],
-
-        ['Damaged Assets', damaged_assets],
-
-        ['Pending Verification', pending_items]
-
+        ["Department", department_name],
+        ["Total Inventory Items", total_items],
+        ["Total Quantity", total_quantity],
+        ["Verified Quantity", verified_quantity],
+        ["Missing Quantity", missing_quantity],
+        ["Damaged Assets", damaged_assets],
+        ["Pending Verification", pending_items]
     ]
 
     summary_table = Table(
-
         summary_data,
-
         colWidths=[220, 220]
-
     )
 
     summary_table.setStyle(TableStyle([
-
         ('BACKGROUND', (0, 0), (-1, 0), colors.lightblue),
-
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
-
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8)
-
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
     ]))
 
     elements.append(summary_table)
 
-    elements.append(Spacer(1, 30))
+    elements.append(Spacer(1, 20))
 
-    # =====================================================
+    # =========================================
     # EXCEPTION ITEMS ONLY
-    # =====================================================
+    # =========================================
 
     exception_df = df[
-
         (
-            pd.to_numeric(
-                df['Missing Quantity'],
-                errors='coerce'
-            ).fillna(0) > 0
-        )
+            df["Total Quantity"] -
+            df["Verified Available Quantity"]
+        ) > 0
+    ].copy()
 
-        |
+    # =========================================
+    # CALCULATE ROW MISSING
+    # =========================================
 
-        (
-            df['Condition']
-            .astype(str)
-            .str.upper()
-            == 'DAMAGED'
-        )
-
-        |
-
-        (
-            ~df['Verification Status']
-            .astype(str)
-            .str.upper()
-            .isin(['FOUND', 'VERIFIED'])
-        )
-
-    ]
-
-    # =====================================================
-    # EXCEPTION SECTION
-    # =====================================================
-
-    elements.append(
-
-        Paragraph(
-
-            "<b>Exception / Discrepancy Items</b>",
-
-            styles['Heading3']
-        )
-
+    exception_df["Missing Qty"] = (
+        exception_df["Total Quantity"] -
+        exception_df["Verified Available Quantity"]
     )
+
+    # =========================================
+    # HEADING
+    # =========================================
+
+    exception_heading = Paragraph(
+        "<b>Exception / Discrepancy Items</b>",
+        styles['Heading3']
+    )
+
+    elements.append(exception_heading)
 
     elements.append(Spacer(1, 10))
 
-    # =====================================================
-    # IF EXCEPTION EXISTS
-    # =====================================================
+    # =========================================
+    # TABLE DATA
+    # =========================================
 
-    if len(exception_df) > 0:
+    table_data = [[
+        "Asset ID",
+        "Name of Item",
+        "Missing Qty",
+        "Verification Status",
+        "Condition"
+    ]]
 
-        exception_columns = [
+    for _, row in exception_df.iterrows():
 
-            'Asset ID',
-            'Name of the Item',
-            'Missing Quantity',
-            'Verification Status',
-            'Condition'
+        table_data.append([
+            str(row.get("Reference No.", "")),
+            str(row.get("Name of the Item", ""))[:40],
+            str(int(row.get("Missing Qty", 0))),
+            str(row.get("Verification Status", "")),
+            str(row.get("Condition", ""))
+        ])
 
-        ]
+    # =========================================
+    # EXCEPTION TABLE
+    # =========================================
 
-        available_exception_columns = [
-
-            col for col in exception_columns
-
-            if col in exception_df.columns
-
-        ]
-
-        table_data = [available_exception_columns]
-
-        for _, row in exception_df.iterrows():
-
-            table_data.append([
-
-                str(row.get(col, ''))[:40]
-
-                for col in available_exception_columns
-
-            ])
-
-        exception_table = Table(
-
-            table_data,
-
-            colWidths=[90, 200, 70, 80, 80]
-
-        )
-
-        exception_table.setStyle(TableStyle([
-
-            ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
-
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige)
-
-        ]))
-
-        elements.append(exception_table)
-
-    else:
-
-        elements.append(
-
-            Paragraph(
-
-                "No discrepancy items found. All inventory verified successfully.",
-
-                styles['BodyText']
-            )
-
-        )
-
-    elements.append(Spacer(1, 40))
-
-    # =====================================================
-    # DECLARATION
-    # =====================================================
-
-    declaration = Paragraph(
-
-        """
-        <b>Committee Declaration:</b><br/><br/>
-
-        The inventory verification of the department has been physically
-        conducted by the undersigned committee members.
-
-        The above details are verified and found correct
-        as per available records and physical stock condition.
-
-        """,
-
-        styles['BodyText']
-
+    exception_table = Table(
+        table_data,
+        colWidths=[100, 200, 70, 90, 70],
+        repeatRows=1
     )
 
-    elements.append(declaration)
-
-    elements.append(Spacer(1, 40))
-
-    # =====================================================
-    # SIGNATURE TABLE
-    # =====================================================
-
-    signature_data = [
-
-        ['Verification Committee Members', ''],
-
-        ['1. _____________________', ''],
-
-        ['2. _____________________', ''],
-
-        ['3. _____________________', ''],
-
-        ['', ''],
-
-        ['Department Head', '__________________'],
-
-        ['Verification Date', '__________________']
-
-    ]
-
-    signature_table = Table(
-
-        signature_data,
-
-        colWidths=[250, 220]
-
-    )
-
-    signature_table.setStyle(TableStyle([
+    exception_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
 
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
 
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
 
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
 
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 10)
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige)
+    ]))
 
+    elements.append(exception_table)
+
+    elements.append(Spacer(1, 30))
+
+    # =========================================
+    # COMMITTEE DECLARATION
+    # =========================================
+
+    declaration_heading = Paragraph(
+        "<b>Committee Declaration</b>",
+        styles['Heading3']
+    )
+
+    declaration_text = Paragraph(
+        """
+        The inventory verification of the department has been
+        physically conducted by the undersigned committee members.
+        The above details are verified and found correct as per
+        available records and physical stock condition.
+        """,
+        styles['BodyText']
+    )
+
+    elements.append(declaration_heading)
+
+    elements.append(Spacer(1, 8))
+
+    elements.append(declaration_text)
+
+    elements.append(Spacer(1, 25))
+
+    # =========================================
+    # SIGNATURE TABLE
+    # =========================================
+
+    signature_data = [
+        ["Verification Committee Members", ""],
+        ["1. ____________________", ""],
+        ["2. ____________________", ""],
+        ["3. ____________________", ""],
+        ["", ""],
+        ["Department Head", "________________"],
+        ["Verification Date", "________________"]
+    ]
+
+    signature_table = Table(
+        signature_data,
+        colWidths=[250, 200]
+    )
+
+    signature_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
     ]))
 
     elements.append(signature_table)
 
-    # =====================================================
+    # =========================================
     # BUILD PDF
-    # =====================================================
+    # =========================================
 
     doc.build(elements)
 
-    print(f"Professional PDF Generated: {output_file}")
+    return file_name
