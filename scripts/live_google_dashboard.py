@@ -15,7 +15,7 @@ st.set_page_config(
 st.title("CSJMU Live Inventory Verification Dashboard")
 
 # =========================================
-# GOOGLE API AUTHENTICATION
+# GOOGLE AUTHENTICATION
 # =========================================
 
 scope = [
@@ -78,6 +78,10 @@ for department_name, sheet_id in department_sheets.items():
 
         department_dataframes[department_name] = df
 
+        # =========================================
+        # SAFE NUMERIC CONVERSION
+        # =========================================
+
         df["Total Quantity"] = pd.to_numeric(
             df["Total Quantity"],
             errors="coerce"
@@ -88,16 +92,19 @@ for department_name, sheet_id in department_sheets.items():
             errors="coerce"
         ).fillna(0)
 
-        df["Calculated Missing Quantity"] = (
-            df["Total Quantity"] -
-            df["Verified Available Quantity"]
-        )
+        # =========================================
+        # SUMMARY CALCULATIONS
+        # =========================================
 
         total_items = len(df)
 
         total_quantity = df["Total Quantity"].sum()
 
         verified_quantity = df["Verified Available Quantity"].sum()
+
+        # =========================================
+        # CORRECT MISSING QUANTITY
+        # =========================================
 
         missing_quantity = (
             total_quantity - verified_quantity
@@ -134,7 +141,7 @@ for department_name, sheet_id in department_sheets.items():
         st.error(f"Error reading {department_name}: {e}")
 
 # =========================================
-# DISPLAY SUMMARY
+# DISPLAY SUMMARY TABLE
 # =========================================
 
 st.subheader("Department-wise Summary")
@@ -158,7 +165,7 @@ selected_department = st.selectbox(
 )
 
 # =========================================
-# DETAIL TABLE
+# DETAIL SECTION
 # =========================================
 
 st.subheader(
@@ -166,6 +173,10 @@ st.subheader(
 )
 
 detail_df = department_dataframes[selected_department]
+
+# =========================================
+# SAFE NUMERIC CONVERSION
+# =========================================
 
 detail_df["Total Quantity"] = pd.to_numeric(
     detail_df["Total Quantity"],
@@ -177,10 +188,18 @@ detail_df["Verified Available Quantity"] = pd.to_numeric(
     errors="coerce"
 ).fillna(0)
 
-detail_df["Calculated Missing Quantity"] = (
+# =========================================
+# ROW LEVEL MISSING QUANTITY
+# =========================================
+
+detail_df["Missing Quantity"] = (
     detail_df["Total Quantity"] -
     detail_df["Verified Available Quantity"]
 )
+
+# =========================================
+# DISPLAY COLUMNS
+# =========================================
 
 display_columns = [
     "Reference No.",
@@ -197,7 +216,7 @@ display_columns = [
     "Custodian/User",
     "Department Verification Committee",
     "Verified Available Quantity",
-    "Calculated Missing Quantity",
+    "Missing Quantity",
     "Verification Status",
     "Condition",
     "QR Sticker Pasted",
