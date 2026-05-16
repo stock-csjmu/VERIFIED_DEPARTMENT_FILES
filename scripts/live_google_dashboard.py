@@ -1,11 +1,14 @@
 import streamlit as st
 import pandas as pd
 import gspread
+
 from oauth2client.service_account import ServiceAccountCredentials
 
-# =========================================
-# PAGE CONFIGURATION
-# =========================================
+from generate_department_report import generate_pdf_report
+
+# =========================================================
+# PAGE SETTINGS
+# =========================================================
 
 st.set_page_config(
     page_title="CSJMU Live Inventory Dashboard",
@@ -14,9 +17,9 @@ st.set_page_config(
 
 st.title("CSJMU Live Inventory Verification Dashboard")
 
-# =========================================
+# =========================================================
 # GOOGLE AUTHENTICATION
-# =========================================
+# =========================================================
 
 scope = [
     "https://spreadsheets.google.com/feeds",
@@ -32,9 +35,9 @@ credentials = ServiceAccountCredentials.from_json_keyfile_dict(
 
 client = gspread.authorize(credentials)
 
-# =========================================
+# =========================================================
 # LOAD DEPARTMENT CONFIGURATION
-# =========================================
+# =========================================================
 
 departments_df = pd.read_csv("departments.csv")
 
@@ -45,9 +48,9 @@ department_sheets = dict(
     )
 )
 
-# =========================================
+# =========================================================
 # LOAD GOOGLE SHEET DATA
-# =========================================
+# =========================================================
 
 @st.cache_data(ttl=60)
 def load_department_data(sheet_id):
@@ -62,9 +65,9 @@ def load_department_data(sheet_id):
 
     return df
 
-# =========================================
-# SUMMARY SECTION
-# =========================================
+# =========================================================
+# SUMMARY DATA
+# =========================================================
 
 summary_data = []
 
@@ -78,9 +81,9 @@ for department_name, sheet_id in department_sheets.items():
 
         department_dataframes[department_name] = df
 
-        # =========================================
+        # =========================================================
         # SAFE NUMERIC CONVERSION
-        # =========================================
+        # =========================================================
 
         df["Total Quantity"] = pd.to_numeric(
             df["Total Quantity"],
@@ -92,26 +95,28 @@ for department_name, sheet_id in department_sheets.items():
             errors="coerce"
         ).fillna(0)
 
-        # =========================================
-        # SUMMARY CALCULATIONS
-        # =========================================
+        # =========================================================
+        # SUMMARY CALCULATION
+        # =========================================================
 
         total_items = len(df)
 
-        total_quantity = df["Total Quantity"].sum()
+        total_quantity = int(
+            df["Total Quantity"].sum()
+        )
 
-        verified_quantity = df["Verified Available Quantity"].sum()
-
-        # =========================================
-        # CORRECT MISSING QUANTITY
-        # =========================================
+        verified_quantity = int(
+            df["Verified Available Quantity"].sum()
+        )
 
         missing_quantity = (
             total_quantity - verified_quantity
         )
 
         pending_items = len(
-            df[df["Verified Available Quantity"] == 0]
+            df[
+                df["Verified Available Quantity"] == 0
+            ]
         )
 
         damaged_assets = len(
@@ -125,24 +130,26 @@ for department_name, sheet_id in department_sheets.items():
 
         summary = {
             "Department": department_name,
-            "Total Items": int(total_items),
-            "Total Quantity": int(total_quantity),
-            "Available Quantity": int(total_quantity),
-            "Verified Quantity": int(verified_quantity),
-            "Missing Quantity": int(missing_quantity),
-            "Pending Items": int(pending_items),
-            "Damaged Assets": int(damaged_assets)
+            "Total Items": total_items,
+            "Total Quantity": total_quantity,
+            "Available Quantity": total_quantity,
+            "Verified Quantity": verified_quantity,
+            "Missing Quantity": missing_quantity,
+            "Pending Items": pending_items,
+            "Damaged Assets": damaged_assets
         }
 
         summary_data.append(summary)
 
     except Exception as e:
 
-        st.error(f"Error reading {department_name}: {e}")
+        st.error(
+            f"Error reading {department_name}: {e}"
+        )
 
-# =========================================
-# DISPLAY SUMMARY TABLE
-# =========================================
+# =========================================================
+# SUMMARY TABLE
+# =========================================================
 
 st.subheader("Department-wise Summary")
 
@@ -153,9 +160,9 @@ st.dataframe(
     use_container_width=True
 )
 
-# =========================================
-# SELECT DEPARTMENT
-# =========================================
+# =========================================================
+# DEPARTMENT SELECTION
+# =========================================================
 
 st.divider()
 
@@ -164,19 +171,15 @@ selected_department = st.selectbox(
     list(department_sheets.keys())
 )
 
-# =========================================
-# DETAIL SECTION
-# =========================================
-
-st.subheader(
-    f"Detailed Inventory Information - {selected_department}"
-)
+# =========================================================
+# DETAIL DATAFRAME
+# =========================================================
 
 detail_df = department_dataframes[selected_department]
 
-# =========================================
+# =========================================================
 # SAFE NUMERIC CONVERSION
-# =========================================
+# =========================================================
 
 detail_df["Total Quantity"] = pd.to_numeric(
     detail_df["Total Quantity"],
@@ -188,18 +191,22 @@ detail_df["Verified Available Quantity"] = pd.to_numeric(
     errors="coerce"
 ).fillna(0)
 
-# =========================================
+# =========================================================
 # ROW LEVEL MISSING QUANTITY
-# =========================================
+# =========================================================
 
 detail_df["Missing Quantity"] = (
     detail_df["Total Quantity"] -
     detail_df["Verified Available Quantity"]
 )
 
-# =========================================
-# DISPLAY COLUMNS
-# =========================================
+# =========================================================
+# DETAIL SECTION
+# =========================================================
+
+st.subheader(
+    f"Detailed Inventory Information - {selected_department}"
+)
 
 display_columns = [
     "Reference No.",
@@ -235,9 +242,31 @@ st.dataframe(
     use_container_width=True
 )
 
-# =========================================
+# =========================================================
+# PDF REPORT GENERATION
+# =========================================================
+
+st.divider()
+
+if st.button("Generate Final Department Report"):
+
+    pdf_file = generate_pdf_report(
+        selected_department,
+        detail_df
+    )
+
+    with open(pdf_file, "rb") as file:
+
+        st.download_button(
+            label="Download Department Verification Report",
+            data=file,
+            file_name=pdf_file,
+            mime="application/pdf"
+        )
+
+# =========================================================
 # FOOTER
-# =========================================
+# =========================================================
 
 st.divider()
 
