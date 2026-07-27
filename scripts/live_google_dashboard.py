@@ -52,7 +52,7 @@ department_sheets = dict(
 # LOAD GOOGLE SHEET DATA
 # =========================================================
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600)
 def load_department_data(sheet_id):
 
     spreadsheet = client.open_by_key(sheet_id)
@@ -73,7 +73,7 @@ summary_data = []
 
 department_dataframes = {}
 
-for department_name, sheet_id in department_sheets.items():
+#for department_name, sheet_id in department_sheets.items():
 
     try:
 
@@ -153,11 +153,8 @@ for department_name, sheet_id in department_sheets.items():
 
 st.subheader("Department-wise Summary")
 
-summary_df = pd.DataFrame(summary_data)
-
-st.dataframe(
-    summary_df,
-    use_container_width=True
+st.info(
+    "Summary is loaded for the selected department only to improve performance."
 )
 
 # =========================================================
@@ -170,6 +167,9 @@ selected_department = st.selectbox(
     "Select Department",
     list(department_sheets.keys())
 )
+sheet_id = department_sheets[selected_department]
+
+detail_df = load_department_data(sheet_id)
 
 # =========================================================
 # DETAIL DATAFRAME
