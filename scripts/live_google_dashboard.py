@@ -73,79 +73,7 @@ summary_data = []
 
 department_dataframes = {}
 
-for department_name, sheet_id in department_sheets.items():
 
-    try:
-
-        df = load_department_data(sheet_id)
-
-        department_dataframes[department_name] = df
-
-        # =========================================================
-        # SAFE NUMERIC CONVERSION
-        # =========================================================
-
-        df["Total Quantity"] = pd.to_numeric(
-            df["Total Quantity"],
-            errors="coerce"
-        ).fillna(0)
-
-        df["Verified Available Quantity"] = pd.to_numeric(
-            df["Verified Available Quantity"],
-            errors="coerce"
-        ).fillna(0)
-
-        # =========================================================
-        # SUMMARY CALCULATION
-        # =========================================================
-
-        total_items = len(df)
-
-        total_quantity = int(
-            df["Total Quantity"].sum()
-        )
-
-        verified_quantity = int(
-            df["Verified Available Quantity"].sum()
-        )
-
-        missing_quantity = (
-            total_quantity - verified_quantity
-        )
-
-        pending_items = len(
-            df[
-                df["Verified Available Quantity"] == 0
-            ]
-        )
-
-        damaged_assets = len(
-            df[
-                df["Condition"]
-                .astype(str)
-                .str.upper()
-                == "DAMAGED"
-            ]
-        )
-
-        summary = {
-            "Department": department_name,
-            "Total Items": total_items,
-            "Total Quantity": total_quantity,
-            "Available Quantity": total_quantity,
-            "Verified Quantity": verified_quantity,
-            "Missing Quantity": missing_quantity,
-            "Pending Items": pending_items,
-            "Damaged Assets": damaged_assets
-        }
-
-        summary_data.append(summary)
-
-    except Exception as e:
-
-        st.error(
-            f"Error reading {department_name}: {e}"
-        )
 
 # =========================================================
 # SUMMARY TABLE
@@ -175,7 +103,7 @@ detail_df = load_department_data(sheet_id)
 # DETAIL DATAFRAME
 # =========================================================
 
-detail_df = department_dataframes[selected_department]
+detail_df = load_department_data(sheet_id)
 
 # =========================================================
 # SAFE NUMERIC CONVERSION
