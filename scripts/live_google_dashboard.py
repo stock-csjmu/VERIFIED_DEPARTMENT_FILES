@@ -73,7 +73,7 @@ summary_data = []
 
 department_dataframes = {}
 
-#for department_name, sheet_id in department_sheets.items():
+for department_name, sheet_id in department_sheets.items():
 
     try:
 
