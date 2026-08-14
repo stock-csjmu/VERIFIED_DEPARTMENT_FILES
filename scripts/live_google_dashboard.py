@@ -25,13 +25,17 @@ scope = [
 
 # =========================================================
 # GOOGLE AUTHENTICATION
-# Local PC  -> config/credentials.json
+# Local PC       -> config/credentials.json
 # Streamlit Cloud -> st.secrets
 # =========================================================
 
+credentials_file = BASE_DIR / "config" / "credentials.json"
+
 try:
     # Streamlit Cloud
-    credentials_dict = dict(st.secrets["gcp_service_account"])
+    credentials_dict = dict(
+        st.secrets["gcp_service_account"]
+    )
 
     credentials = ServiceAccountCredentials.from_json_keyfile_dict(
         credentials_dict,
@@ -40,8 +44,6 @@ try:
 
 except Exception:
     # Local PC
-    credentials_file = BASE_DIR / "config" / "credentials.json"
-
     if not credentials_file.exists():
         st.error(
             f"Google credentials file not found: {credentials_file}"
@@ -52,19 +54,6 @@ except Exception:
         str(credentials_file),
         scope
     )
-
-client = gspread.authorize(credentials)
-
-if not credentials_file.exists():
-    st.error(
-        f"Google credentials file not found: {credentials_file}"
-    )
-    st.stop()
-
-credentials = ServiceAccountCredentials.from_json_keyfile_name(
-    str(credentials_file),
-    scope
-)
 
 client = gspread.authorize(credentials)
 
